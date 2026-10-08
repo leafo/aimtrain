@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gyro Aim Trainer</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1f2630;
+    --line: #2c3540;
+    --text: #e6edf3;
+    --dim: #8b98a5;
+    --accent: #ff5468;
+    --good: #4dff88;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; cursor: crosshair; user-select: none; }
+  canvas { position: fixed; inset: 0; display: block; }
+  #fx { pointer-events: none; z-index: 3; }
+  #overlay { position: fixed; inset: 0; z-index: 2; display: none; align-items: center; justify-content: center;
+    background: rgba(8,10,14,.72); backdrop-filter: blur(3px); padding: 16px; overflow: auto; }
+  #overlay.show { display: flex; }
+  .panel { display: none; width: min(640px, 100%); max-height: 100%; overflow: auto; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .panel.show { display: block; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+  h1 span { color: var(--accent); }
+  h2 { margin: 0 0 12px; font-size: 22px; }
+  .sub { margin: 4px 0 16px; color: var(--dim); }
+  .row { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; margin: 8px 0; }
+  .row > label { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .8px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { cursor: inherit; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; transition: background .08s, border-color .08s; }
+  button:hover, button.hover { border-color: #5b6b7c; background: #28313d; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+    font-size: 17px; padding: 11px 26px; }
+  button.primary:hover, button.primary.hover { filter: brightness(1.15); }
+  button.swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+  button.swatch.on { border-color: #fff; }
+  .desc { margin: 2px 0 10px 140px; color: var(--dim); font-size: 13px; min-height: 18px; }
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper b { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+  .pad { margin: 14px 0; padding: 10px 12px; background: var(--panel2); border-radius: 8px; font-size: 13px; color: var(--dim);
+    display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #444; flex: none; }
+  .dot.ok { background: #3a8; }
+  .dot.fire { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+  .best { color: var(--dim); font-size: 13px; margin-left: auto; }
+  .hint { color: var(--dim); font-size: 12.5px; margin: 14px 0 0; }
+  .hint kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: inherit; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 4px; }
+  .stat { background: var(--panel2); border-radius: 10px; padding: 12px; }
+  .stat .k { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
+  .stat .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .stat.big { grid-column: span 3; }
+  .stat.big .v { font-size: 40px; }
+  .newbest { color: var(--good); font-size: 14px; font-weight: 600; margin-left: 8px; }
+  @media (max-width: 560px) {
+    .row { grid-template-columns: 1fr; gap: 4px; }
+    .desc { margin-left: 0; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat.big { grid-column: span 2; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay">
+  <section id="menu" class="panel">
+    <h1>Gyro <span>Aim</span> Trainer</h1>
+    <p class="sub">Aim with the mouse (or gyro-as-mouse), fire with your gamepad.</p>
+
+    <div class="row"><label>Mode</label><div class="seg" data-key="mode"></div></div>
+    <p class="desc" id="modeDesc"></p>
+    <div class="row wrow"><label>Weapon</label><div class="seg" data-key="weapon"></div></div>
+    <div class="row wrow"><label>Recoil</label><div class="seg" data-key="recoil"></div></div>
+    <div class="row wrow"><label>Reloading</label><div class="seg" data-key="reload"></div></div>
+    <div class="row"><label>Duration</label><div class="seg" data-key="dur"></div></div>
+    <div class="row"><label>Target size</label><div class="seg" data-key="size"></div></div>
+    <div class="row"><label>Cursor</label><div class="seg" data-key="lock"></div></div>
+    <div class="row"><label>Sensitivity</label>
+      <div class="stepper"><button data-sens="-0.05">−</button><b id="sensVal"></b><button data-sens="0.05">+</button>
+        <span style="color:var(--dim);font-size:12px">pointer lock only</span></div></div>
+    <div class="row"><label>Fire button</label>
+      <div class="stepper"><b id="fireVal" style="min-width:90px"></b><button id="rebind">Rebind</button><button id="resetBind">Reset</button></div></div>
+    <div class="row"><label>Mouse click fires</label><div class="seg" data-key="mouseFire"></div></div>
+    <div class="row"><label>Rumble</label><div class="seg" data-key="rumble"></div></div>
+    <div class="row"><label>Sound</label><div class="seg" data-key="sound"></div></div>
+    <div class="row"><label>Crosshair</label><div class="seg" data-key="color"></div></div>
+
+    <div class="pad"><span class="dot" id="padDot"></span><span id="padText"></span></div>
+
+    <div class="actions">
+      <button class="primary" id="startBtn" data-primary>Start</button>
+      <span class="best" id="menuBest"></span>
+    </div>
+    <p class="hint">Gamepad fire clicks whatever is under the crosshair, so the whole menu works from the controller.
+      <kbd>Start</kbd> = start / pause, <kbd>X</kbd> = reload, <kbd>Back</kbd> = menu, <kbd>Esc</kbd> = pause.
+      “System” uses the real OS cursor (lowest latency, but stops at the screen edge). “Pointer lock” draws its own crosshair from raw relative motion so it never hits the edge, at the cost of a little display latency. If Steam Input maps your trigger to a mouse click, keep “Mouse click fires” on.</p>
+  </section>
+
+  <section id="results" class="panel">
+    <h2 id="resTitle">Results</h2>
+    <div class="stats" id="resStats"></div>
+    <div class="actions">
+      <button class="primary" id="retryBtn" data-primary>Retry</button>
+      <button id="resMenuBtn">Menu</button>
+    </div>
+  </section>
+
+  <section id="paused" class="panel">
+    <h2>Paused</h2>
+    <div class="actions">
+      <button class="primary" id="resumeBtn" data-primary>Resume</button>
+      <button id="restartBtn">Restart</button>
+      <button id="pauseMenuBtn">Menu</button>
+    </div>
+  </section>
+</div>
+<canvas id="fx"></canvas>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------- settings ----------
+const DEFAULTS = { mode: "grid", dur: 60, size: "M", sens: 1, lock: false, mouseFire: true,
+  rumble: true, sound: true, color: "#4dff88", fire: [7, 5], weapon: "ar", recoil: true, reload: true };
+let settings = (() => {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem("aim:settings") || "{}") }; }
+  catch (e) { return { ...DEFAULTS }; }
+})();
+function save() { try { localStorage.setItem("aim:settings", JSON.stringify(settings)); } catch (e) {} }
+
+const MODES = {
+  grid:   { name: "Gridshot", desc: "Three targets on a grid. Clear them as fast as you can." },
+  flick:  { name: "Flick",    desc: "One target anywhere on screen. Faster kills score more." },
+  micro:  { name: "Micro",    desc: "Small targets spawning close to the last one. Precision over speed." },
+  shrink: { name: "Reflex",   desc: "Targets shrink and vanish. Hit them before they disappear." },
+  track:  { name: "Tracking", desc: "Hold fire and stay on a strafing target." },
+  sweep:  { name: "Sweep",    desc: "Hold fire and follow a target gliding in long, smooth arcs across the whole screen." },
+  duel:   { name: "Duel",      desc: "Hold fire on one strafing, jumping, dashing enemy at a time. Recoil climbs, so pull down. Kill it and the next one spawns elsewhere." },
+  team:   { name: "Team Wipe", desc: "Three enemies at once. Wipe the squad as fast as you can, then the next squad spawns." },
+};
+const RELOAD_TIME = 0.35; // kept short on purpose: this trainer is about aim, not reload timing
+// numbers are in the spirit of a high-TTK arena shooter, not copied from any game
+const WEAPONS = {
+  ar:  { name: "AR",  rpm: 600, dmg: 22, mag: 30, kick: 0.16, jitter: 0.06, spread: 0.04, head: 1.5 },
+  smg: { name: "SMG", rpm: 950, dmg: 14, mag: 32, kick: 0.09, jitter: 0.09, spread: 0.07, head: 1.5 },
+  lmg: { name: "LMG", rpm: 650, dmg: 20, mag: 70, kick: 0.12, jitter: 0.07, spread: 0.06, head: 1.25 },
+};
+const CLASSES = {
+  light:  { hp: 150, scale: 0.85, speed: 10,  color: "#ffc145", dash: true },
+  medium: { hp: 250, scale: 1,    speed: 7.5, color: "#ff5468" },
+  heavy:  { hp: 350, scale: 1.2,  speed: 5.5, color: "#b46cff" },
+};
+const SEGS = {
+  mode: Object.entries(MODES).map(([k, m]) => [k, m.name]),
+  weapon: Object.entries(WEAPONS).map(([k, w]) => [k, w.name]),
+  recoil: [[true, "On"], [false, "Off"]],
+  reload: [[true, "Quick"], [false, "Off (infinite ammo)"]],
+  dur: [[15, "15s"], [30, "30s"], [60, "60s"], [90, "90s"]],
+  size: [["S", "Small"], ["M", "Medium"], ["L", "Large"]],
+  lock: [[false, "System (lowest latency)"], [true, "Pointer lock"]],
+  mouseFire: [[true, "On"], [false, "Off"]],
+  rumble: [[true, "On"], [false, "Off"]],
+  sound: [[true, "On"], [false, "Off"]],
+  color: [["#4dff88"], ["#00e5ff"], ["#ffffff"], ["#ff4dd2"], ["#ffd23f"]],
+};
+const SIZES = { S: 0.02, M: 0.03, L: 0.042 };
+const BTN_NAMES = ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Back", "Start", "LS", "RS", "Up", "Down", "Left", "Right", "Home"];
+const btnName = i => BTN_NAMES[i] || "B" + i;
+
+// ---------- canvas ----------
+const game = $("#game"), g = game.getContext("2d");
+// desynchronized lets the crosshair layer skip the compositor where supported (lower latency, may tear)
+const fx = $("#fx"), f = fx.getContext("2d", { desynchronized: true }) || fx.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+let cx = innerWidth / 2, cy = innerHeight / 2;
+function resize() {
+  DPR = devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+  for (const c of [game, fx]) { c.width = W * DPR; c.height = H * DPR; c.style.width = W + "px"; c.style.height = H + "px"; }
+  g.setTransform(DPR, 0, 0, DPR, 0, 0); f.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx = clamp(cx, 0, W); cy = clamp(cy, 0, H);
+}
+addEventListener("resize", resize); resize();
+const HUD_H = 70;
+const area = () => ({ x0: 30, x1: W - 30, y0: HUD_H + 20, y1: H - 30 });
+
+// ---------- audio / rumble ----------
+let actx = null;
+function ac() {
+  if (!actx) { try { actx = new AudioContext(); } catch (e) { return null; } }
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+function tone(freq, dur, type = "sine", vol = 0.15, to = null) {
+  if (!settings.sound) return;
+  const a = ac(); if (!a || a.state !== "running") return;
+  const o = a.createOscillator(), gn = a.createGain(), t = a.currentTime;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(gn).connect(a.destination); o.start(t); o.stop(t + dur);
+}
+const sndHit = () => tone(1100, 0.07, "triangle", 0.18, 1700);
+const sndMiss = () => tone(180, 0.09, "square", 0.05, 90);
+const sndTick = () => tone(1500, 0.025, "sine", 0.05);
+function rumble(weak, strong, ms) {
+  if (!settings.rumble) return;
+  for (const p of navigator.getGamepads ? navigator.getGamepads() : []) {
+    const v = p && p.vibrationActuator;
+    if (v && v.playEffect) v.playEffect("dual-rumble", { duration: ms, weakMagnitude: weak, strongMagnitude: strong }).catch(() => {});
+  }
+}
+
+// ---------- pointer lock ----------
+let locked = false;
+async function requestLock() {
+  if (!settings.lock || document.pointerLockElement) return;
+  const el = document.body;
+  try { await el.requestPointerLock({ unadjustedMovement: true }); }
+  catch (e) { try { await el.requestPointerLock(); } catch (e2) {} }
+}
+document.addEventListener("pointerlockchange", () => {
+  locked = !!document.pointerLockElement;
+  if (!locked && (state === "playing" || state === "ready")) pause();
+});
+
+// ---------- state ----------
+let state = "menu";        // menu | ready | playing | paused | results
+let pausedFrom = null;
+let run = null;
+let particles = [], marks = [], hitFlash = 0;
+
+function showPanel(id) {
+  $("#overlay").classList.toggle("show", !!id);
+  for (const p of document.querySelectorAll(".panel")) p.classList.toggle("show", p.id === id);
+}
+const overlayVisible = () => state === "menu" || state === "results" || state === "paused";
+
+function goMenu() { state = "menu"; listening = false; refresh(); showPanel("menu"); }
+function startRun() {
+  requestLock();
+  const R = SIZES[settings.size] * Math.min(W, H);
+  run = { mode: settings.mode, dur: settings.dur, size: settings.size, R, t: 0, score: 0, hits: 0, shots: 0,
+    expired: 0, streak: 0, bestStreak: 0, ttk: [], onT: 0, heldT: 0, targets: [], nextSpawn: 0,
+    lastCell: null, lastPos: null, tick: 0,
+    weapon: settings.weapon, recoil: settings.recoil, reload: settings.reload, ammo: WEAPONS[settings.weapon].mag, reloadT: 0, cd: 0, rx: 0, ry: 0,
+    fired: 0, landed: 0, heads: 0, dmg: 0, kills: 0, engage: [], waves: 0, waveTimes: [], waveStart: 0 };
+  particles = []; marks = [];
+  state = "ready"; showPanel(null);
+}
+function beginRun() {
+  state = "playing";
+  const n = run.mode === "grid" ? 3 : run.mode === "shrink" || isWeapon(run.mode) ? 0 : 1;
+  for (let i = 0; i < n; i++) spawn();
+}
+function pause() {
+  if (state !== "playing" && state !== "ready") return;
+  pausedFrom = state; state = "paused"; showPanel("paused");
+}
+function resume() { requestLock(); state = pausedFrom || "ready"; showPanel(null); }
+function endRun() {
+  state = "results";
+  showResults();
+  showPanel("results");
+}
+
+// ---------- spawning ----------
+function addTarget(t) { t.born = run.t; run.targets.push(t); }
+function spawn() {
+  const R = run.R, a = area();
+  switch (run.mode) {
+    case "grid": {
+      const s = R * 3.4, used = new Set(run.targets.map(t => t.cell));
+      if (run.lastCell != null) used.add(run.lastCell);
+      const free = [...Array(20).keys()].filter(k => !used.has(k));
+      const k = free[Math.random() * free.length | 0], i = k % 5, j = k / 5 | 0;
+      addTarget({ x: W / 2 + (i - 2) * s, y: (a.y0 + a.y1) / 2 + (j - 1.5) * s, r: R, cell: k });
+      break;
+    }
+    case "flick": {
+      let x, y, n = 0;
+      do { x = rand(a.x0 + R, a.x1 - R); y = rand(a.y0 + R, a.y1 - R); }
+      while (Math.hypot(x - cx, y - cy) < R * 6 && ++n < 30);
+      addTarget({ x, y, r: R });
+      break;
+    }
+    case "micro": {
+      const r = R * 0.55, p = run.lastPos || { x: W / 2, y: (a.y0 + a.y1) / 2 };
+      const ang = Math.random() * TAU, d = rand(r * 3, r * 10);
+      addTarget({ x: clamp(p.x + Math.cos(ang) * d, a.x0 + r, a.x1 - r),
+                  y: clamp(p.y + Math.sin(ang) * d, a.y0 + r, a.y1 - r), r });
+      break;
+    }
+    case "shrink": {
+      const r = R * 1.2; let x, y, n = 0;
+      do { x = rand(a.x0 + r, a.x1 - r); y = rand(a.y0 + r, a.y1 - r); }
+      while (run.targets.some(t => Math.hypot(t.x - x, t.y - y) < r * 3) && ++n < 30);
+      addTarget({ x, y, r, r0: r, life: 1.5 });
+      break;
+    }
+    case "track":
+    case "sweep":
+      addTarget({ x: W / 2, y: (a.y0 + a.y1) / 2, r: R * 1.1, vx: 0, vy: 0, tvx: 0, tvy: 0, turn: 0 });
+      break;
+  }
+}
+
+// ---------- firing ----------
+let lastFire = { t: 0, src: null };
+function fire(src) {
+  const now = performance.now();
+  // Steam Input can send both a gamepad press and a mouse click for one pull; drop the duplicate
+  if (lastFire.src && lastFire.src !== src && now - lastFire.t < 60) return;
+  lastFire = { t: now, src };
+
+  if (overlayVisible()) { uiClick(); return; }
+  if (state === "ready") {
+    if (Math.hypot(cx - W / 2, cy - H / 2) <= run.R * 1.4) { sndHit(); burst(W / 2, H / 2, "#fff"); beginRun(); }
+    return;
+  }
+  if (state !== "playing" || isTracking(run.mode) || isWeapon(run.mode)) return;
+
+  run.shots++;
+  let best = null, bd = Infinity;
+  for (const t of run.targets) {
+    const d = Math.hypot(cx - t.x, cy - t.y);
+    if (d <= t.r && d < bd) { best = t; bd = d; }
+  }
+  if (!best) {
+    run.streak = 0; run.score -= 25;
+    marks.push({ x: cx, y: cy, t: run.t });
+    sndMiss();
+    return;
+  }
+  const ttk = run.t - best.born;
+  let pts = 100;
+  if (run.mode === "flick" || run.mode === "micro") pts += Math.max(0, Math.round(100 - ttk * 100));
+  if (run.mode === "shrink") pts += Math.round(100 * best.r / best.r0);
+  run.score += pts; run.hits++; run.ttk.push(ttk);
+  run.streak++; run.bestStreak = Math.max(run.bestStreak, run.streak);
+  run.targets.splice(run.targets.indexOf(best), 1);
+  run.lastCell = best.cell; run.lastPos = { x: best.x, y: best.y };
+  burst(best.x, best.y, "#ff5468");
+  marks.push({ x: best.x, y: best.y - best.r - 6, t: run.t, text: "+" + pts });
+  hitFlash = 1; sndHit(); rumble(0.6, 0.1, 45);
+  if (run.mode !== "shrink") spawn();
+}
+function burst(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * TAU, s = rand(120, 420);
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.2, 0.4), age: 0, color });
+  }
+}
+
+// ---------- enemies / weapon ----------
+function dims(e) {
+  const s = run.R * CLASSES[e.cls].scale;
+  const bw = s * 1.5, bh = s * 2.6, hr = s * 0.5;
+  return { bw, bh, hr, hx: e.x, hy: e.y - bh / 2 - hr * 0.9 };
+}
+function groundRange(cls) {
+  const a = area(), s = run.R * CLASSES[cls].scale;
+  return [a.y0 + s * 2.4 + s * 2.6, a.y1 - s * 1.3]; // keep head (plus jump room) and feet on screen
+}
+function spawnEnemy(xMin, xMax) {
+  const a = area(), r = Math.random();
+  const cls = r < 0.35 ? "light" : r < 0.75 ? "medium" : "heavy", c = CLASSES[cls];
+  const [g0, g1] = groundRange(cls), m = run.R * 2;
+  let x, gy, n = 0;
+  do { x = rand(Math.max(a.x0 + m, xMin ?? 0), Math.min(a.x1 - m, xMax ?? W)); gy = rand(g0, g1); }
+  while (Math.hypot(x - cx, gy - cy) < run.R * 6 && ++n < 30);
+  const now = run.t;
+  run.targets.push({ enemy: true, cls, x, y: gy, gy, tgy: gy, vx: 0, vy: 0, air: false, hp: c.hp, max: c.hp,
+    dir: Math.random() < 0.5 ? -1 : 1, nextFlip: now + rand(0.2, 0.6), nextJump: now + rand(0.8, 3),
+    nextDash: now + rand(0.8, 2.5), dashT: 0, dashDir: 1, nextDrift: now + rand(1, 3), born: now, firstHit: null, flash: 0 });
+}
+function spawnWave() {
+  if (run.mode === "duel") spawnEnemy();
+  else { const third = W / 3; for (let i = 0; i < 3; i++) spawnEnemy(third * i, third * (i + 1)); }
+  run.waveStart = run.t;
+}
+function updateEnemy(e, dt) {
+  const c = CLASSES[e.cls], R = run.R, sp = c.speed * R, a = area(), d = dims(e);
+  if (run.t >= e.nextFlip) { // ADAD strafing with the odd stop
+    const r = Math.random();
+    e.dir = r < 0.12 ? 0 : r < 0.75 ? -(e.dir || 1) : (Math.random() < 0.5 ? -1 : 1);
+    e.nextFlip = run.t + rand(0.15, 0.8);
+  }
+  if (c.dash && run.t >= e.nextDash) { e.dashT = 0.18; e.dashDir = Math.random() < 0.5 ? -1 : 1; e.nextDash = run.t + rand(1.2, 3); }
+  const tv = e.dashT > 0 ? e.dashDir * sp * 3.2 : e.dir * sp;
+  e.dashT -= dt;
+  e.vx += (tv - e.vx) * Math.min(1, dt * 12);
+  e.x += e.vx * dt;
+  if (e.x < a.x0 + d.bw || e.x > a.x1 - d.bw) { e.x = clamp(e.x, a.x0 + d.bw, a.x1 - d.bw); e.dir = e.x < W / 2 ? 1 : -1; e.vx = 0; }
+  if (run.t >= e.nextDrift) { const [g0, g1] = groundRange(e.cls); e.tgy = rand(g0, g1); e.nextDrift = run.t + rand(1.5, 4); }
+  e.gy += (e.tgy - e.gy) * Math.min(1, dt * 0.8);
+  if (!e.air && run.t >= e.nextJump) { e.air = true; e.vy = -R * 13; e.nextJump = run.t + rand(1, 4); }
+  if (e.air) {
+    e.vy += R * 38 * dt; e.y += e.vy * dt;
+    if (e.y >= e.gy) { e.y = e.gy; e.air = false; e.vy = 0; }
+  } else e.y = e.gy;
+  e.flash = Math.max(0, e.flash - dt);
+}
+function hitEnemy(x, y) {
+  for (let i = run.targets.length - 1; i >= 0; i--) { // topmost drawn first
+    const e = run.targets[i], d = dims(e);
+    if (Math.hypot(x - d.hx, y - d.hy) <= d.hr) return { e, head: true };
+    if (Math.abs(x - e.x) <= d.bw / 2 && Math.abs(y - e.y) <= d.bh / 2) return { e, head: false };
+  }
+  return null;
+}
+function shoot() {
+  const w = WEAPONS[run.weapon], R = run.R;
+  if (run.reload) run.ammo--;
+  run.fired++;
+  const ang = Math.random() * TAU, rr = Math.sqrt(Math.random()) * w.spread * R;
+  const ix = cx + run.rx + Math.cos(ang) * rr, iy = cy + run.ry + Math.sin(ang) * rr;
+  if (run.recoil) { // climbs toward a cap so a full spray is learnable
+    run.ry -= w.kick * R * (1 - Math.min(1, -run.ry / (R * 3)));
+    run.rx = clamp(run.rx + rand(-1, 1) * w.jitter * R, -R, R);
+  }
+  tone(240, 0.03, "square", 0.025, 120); rumble(0.15, 0.05, 25);
+  const h = hitEnemy(ix, iy);
+  if (!h) { marks.push({ x: ix, y: iy, t: run.t, dot: true }); return; }
+  const e = h.e, dmg = w.dmg * (h.head ? w.head : 1), dealt = Math.min(dmg, e.hp);
+  e.hp -= dmg; e.flash = 0.06;
+  run.landed++; run.dmg += dealt; run.score += Math.round(dealt);
+  if (h.head) run.heads++;
+  if (e.firstHit == null) { e.firstHit = run.t; run.engage.push(run.t - e.born); }
+  hitFlash = 1;
+  tone(h.head ? 1700 : 1100, 0.04, "triangle", 0.1);
+  marks.push({ x: ix + rand(-8, 8), y: iy - 10, t: run.t, text: String(Math.round(dmg)), color: h.head ? "#ffd23f" : "#e6edf3" });
+  if (e.hp <= 0) {
+    run.kills++; run.score += 100; run.ttk.push(run.t - e.firstHit);
+    run.targets.splice(run.targets.indexOf(e), 1);
+    burst(e.x, e.y, CLASSES[e.cls].color);
+    tone(500, 0.18, "sawtooth", 0.08, 1400); rumble(0.6, 0.4, 90);
+    if (!run.targets.length) {
+      if (run.mode === "team") { run.waves++; run.waveTimes.push(run.t - run.waveStart); }
+      run.nextSpawn = run.t + (run.mode === "team" ? 0.5 : 0.25);
+    }
+  }
+}
+function startReload() {
+  const w = WEAPONS[run.weapon];
+  if (!run.reload || run.reloadT > 0 || run.ammo >= w.mag) return;
+  run.reloadT = RELOAD_TIME; tone(400, 0.06, "square", 0.04);
+}
+function updateWeapon(dt) {
+  const w = WEAPONS[run.weapon];
+  if (!run.targets.length && run.t >= run.nextSpawn) spawnWave();
+  for (const e of run.targets) updateEnemy(e, dt);
+  if (run.reloadT > 0) {
+    run.reloadT -= dt;
+    if (run.reloadT <= 0) { run.reloadT = 0; run.ammo = w.mag; tone(800, 0.05, "square", 0.04); }
+  }
+  const held = (fireHeld || (settings.mouseFire && mouseHeld)) && run.reloadT <= 0;
+  run.cd -= dt;
+  if (held) {
+    while (run.cd <= 0 && run.ammo > 0) { shoot(); run.cd += 60 / w.rpm; }
+    if (run.ammo <= 0) startReload();
+  } else {
+    run.cd = Math.max(run.cd, 0);
+    const k = Math.exp(-dt * 6); run.rx *= k; run.ry *= k;
+  }
+}
+function drawEnemy(e) {
+  const c = CLASSES[e.cls], d = dims(e), col = e.flash > 0 ? "#fff" : c.color;
+  g.fillStyle = col;
+  g.beginPath(); g.roundRect(e.x - d.bw / 2, e.y - d.bh / 2, d.bw, d.bh, d.bw * 0.35); g.fill();
+  g.beginPath(); g.arc(d.hx, d.hy, d.hr, 0, TAU); g.fill();
+  g.fillStyle = "rgba(0,0,0,.25)";
+  g.fillRect(e.x - d.bw / 2, e.y + d.bh / 2 - 3, d.bw, 3);
+  const bw = d.bw * 1.4, by = d.hy - d.hr - 12;
+  g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(e.x - bw / 2 - 1, by - 1, bw + 2, 7);
+  g.fillStyle = e.hp / e.max > 0.35 ? "#e6edf3" : "#ff5468";
+  g.fillRect(e.x - bw / 2, by, bw * Math.max(0, e.hp / e.max), 5);
+}
+
+// ---------- UI via crosshair ----------
+let hovered = null;
+function elAtCursor() {
+  const el = document.elementFromPoint(cx, cy);
+  return el && el.closest("button");
+}
+function uiClick() { const b = elAtCursor(); if (b && !b.disabled) { tone(700, 0.04, "sine", 0.06); b.click(); } }
+
+// ---------- mouse ----------
+let mouseHeld = false;
+// pointerrawupdate isn't held back until the next animation frame like mousemove is
+const MOVE_EVENT = "onpointerrawupdate" in window ? "pointerrawupdate" : "mousemove";
+addEventListener(MOVE_EVENT, e => {
+  if (locked) {
+    cx = clamp(cx + e.movementX * settings.sens, 0, W); cy = clamp(cy + e.movementY * settings.sens, 0, H);
+    drawCross(); // draw now instead of waiting for the next frame
+  } else { cx = e.clientX; cy = e.clientY; }
+});
+addEventListener("mousedown", e => {
+  ac();
+  if (e.button !== 0) return;
+  if (overlayVisible()) { if (locked) { e.preventDefault(); uiClick(); } return; } // unlocked: native click handles it
+  if (settings.lock && !locked) { requestLock(); return; }
+  if (settings.mouseFire) { mouseHeld = true; fire("mouse"); }
+});
+addEventListener("mouseup", e => { if (e.button === 0) mouseHeld = false; });
+addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (state === "playing" || state === "ready") pause(); else if (state === "paused") goMenu(); }
+  if (e.key === "r" || e.key === "R") { if (state !== "menu") startRun(); }
+});
+
+// ---------- gamepad ----------
+let padPrev = [], fireHeld = false, ignoreFire = false, listening = false;
+function pollPads() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  let held = false;
+  for (const p of pads) {
+    const prev = padPrev[p.index] || [];
+    const cur = p.buttons.map(b => b.pressed || b.value > 0.4);
+    cur.forEach((c, i) => { if (c && !prev[i]) onPadPress(i); });
+    if (settings.fire.some(i => cur[i])) held = true;
+    padPrev[p.index] = cur;
+  }
+  if (!held) ignoreFire = false;
+  if (held && !fireHeld && !ignoreFire) fire("pad");
+  fireHeld = held;
+  return pads;
+}
+function onPadPress(i) {
+  if (listening) {
+    settings.fire = [i]; listening = false; ignoreFire = true; save(); refresh(); return;
+  }
+  if (settings.fire.includes(i)) return;
+  if (i === 9) {
+    if (state === "playing" || state === "ready") pause();
+    else { const b = document.querySelector(".panel.show [data-primary]"); if (b) b.click(); }
+  } else if (i === 8 && state !== "menu") goMenu();
+  else if (i === 2 && state === "playing" && isWeapon(run.mode)) startReload();
+}
+
+// ---------- update ----------
+function update(dt) {
+  run.t += dt;
+  const a = area();
+  if (run.mode === "shrink") {
+    if (run.t >= run.nextSpawn && run.targets.length < 3) { spawn(); run.nextSpawn = run.t + 0.6; }
+    for (let i = run.targets.length - 1; i >= 0; i--) {
+      const t = run.targets[i], k = (run.t - t.born) / t.life;
+      t.r = t.r0 * Math.max(0, 1 - k);
+      if (k >= 1) { run.targets.splice(i, 1); run.expired++; run.streak = 0; marks.push({ x: t.x, y: t.y, t: run.t, gone: true }); }
+    }
+  }
+  if (run.mode === "track") {
+    const t = run.targets[0], max = run.R * 9;
+    if (run.t >= t.turn) { t.tvx = rand(-max, max); t.tvy = rand(-max, max) * 0.5; t.turn = run.t + rand(0.3, 1.2); }
+    t.vx += (t.tvx - t.vx) * Math.min(1, dt * 6); t.vy += (t.tvy - t.vy) * Math.min(1, dt * 6);
+    t.x += t.vx * dt; t.y += t.vy * dt;
+    if (t.x < a.x0 + t.r || t.x > a.x1 - t.r) { t.x = clamp(t.x, a.x0 + t.r, a.x1 - t.r); t.vx *= -1; t.tvx *= -1; }
+    if (t.y < a.y0 + t.r || t.y > a.y1 - t.r) { t.y = clamp(t.y, a.y0 + t.r, a.y1 - t.r); t.vy *= -1; t.tvy *= -1; }
+  }
+  if (run.mode === "sweep") {
+    // steer toward a far-away waypoint with a slow turn rate, which produces long curved sweeps
+    const t = run.targets[0], m = t.r + 10;
+    if (!t.wp || Math.hypot(t.wp.x - t.x, t.wp.y - t.y) < run.R * 4) {
+      const minD = Math.min(a.x1 - a.x0, a.y1 - a.y0) * 0.7;
+      let wp, n = 0;
+      do { wp = { x: rand(a.x0 + m, a.x1 - m), y: rand(a.y0 + m, a.y1 - m) }; }
+      while (Math.hypot(wp.x - t.x, wp.y - t.y) < minD && ++n < 40);
+      t.wp = wp; t.speed = run.R * rand(9, 15);
+    }
+    const dx = t.wp.x - t.x, dy = t.wp.y - t.y, d = Math.hypot(dx, dy) || 1;
+    const k = Math.min(1, dt * 1.6);
+    t.vx += (dx / d * t.speed - t.vx) * k; t.vy += (dy / d * t.speed - t.vy) * k;
+    t.x = clamp(t.x + t.vx * dt, a.x0 + t.r, a.x1 - t.r); t.y = clamp(t.y + t.vy * dt, a.y0 + t.r, a.y1 - t.r);
+  }
+  if (isWeapon(run.mode)) updateWeapon(dt);
+  if (isTracking(run.mode)) {
+    const t = run.targets[0];
+    const on = Math.hypot(cx - t.x, cy - t.y) <= t.r;
+    const held = fireHeld || (settings.mouseFire && mouseHeld);
+    t.on = on && held;
+    if (held) { run.heldT += dt; if (on) run.onT += dt; }
+    if (t.on && (run.tick -= dt) <= 0) { run.tick = 0.09; sndTick(); rumble(0.25, 0, 30); }
+    run.score = Math.round(run.onT / run.dur * 10000);
+  }
+  if (run.t >= run.dur) endRun();
+}
+
+// ---------- render ----------
+function drawTarget(t, alpha = 1) {
+  const r = t.r; if (r <= 0.5) return;
+  g.globalAlpha = alpha;
+  g.fillStyle = t.on ? "#4dff88" : "#ff5468";
+  g.beginPath(); g.arc(t.x, t.y, r, 0, TAU); g.fill();
+  g.fillStyle = "rgba(255,255,255,.9)";
+  g.beginPath(); g.arc(t.x, t.y, r * 0.62, 0, TAU); g.fill();
+  g.fillStyle = t.on ? "#4dff88" : "#ff5468";
+  g.beginPath(); g.arc(t.x, t.y, r * 0.42, 0, TAU); g.fill();
+  g.fillStyle = "#fff";
+  g.beginPath(); g.arc(t.x, t.y, Math.max(1.5, r * 0.12), 0, TAU); g.fill();
+  g.globalAlpha = 1;
+}
+function render(dt) {
+  g.fillStyle = "#0e1116"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,.035)"; g.lineWidth = 1; g.beginPath();
+  for (let x = (W / 2) % 60; x < W; x += 60) { g.moveTo(x + .5, 0); g.lineTo(x + .5, H); }
+  for (let y = (H / 2) % 60; y < H; y += 60) { g.moveTo(0, y + .5); g.lineTo(W, y + .5); }
+  g.stroke();
+
+  if (run && state !== "menu") {
+    if (state === "ready" || (state === "paused" && pausedFrom === "ready")) {
+      drawTarget({ x: W / 2, y: H / 2, r: run.R * 1.4 });
+      g.textAlign = "center"; g.fillStyle = "#e6edf3"; g.font = "600 28px system-ui, sans-serif";
+      g.fillText(MODES[run.mode].name + " · " + run.dur + "s", W / 2, H / 2 - run.R * 1.4 - 50);
+      g.font = "15px system-ui, sans-serif"; g.fillStyle = "#8b98a5";
+      g.fillText("Shoot the target to start", W / 2, H / 2 - run.R * 1.4 - 22);
+      if (settings.lock && !locked) g.fillText("Click to lock the pointer", W / 2, H / 2 + run.R * 1.4 + 34);
+    } else {
+      for (const t of run.targets) t.enemy ? drawEnemy(t) : drawTarget(t);
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i]; p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.9; p.vy *= 0.9;
+      if (p.age >= p.life) { particles.splice(i, 1); continue; }
+      g.globalAlpha = 1 - p.age / p.life; g.fillStyle = p.color;
+      g.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    g.globalAlpha = 1;
+    g.textAlign = "center";
+    for (let i = marks.length - 1; i >= 0; i--) {
+      const m = marks[i], age = run.t - m.t, life = m.text ? 0.6 : 0.5;
+      if (age > life || age < 0) { marks.splice(i, 1); continue; }
+      g.globalAlpha = 1 - age / life;
+      if (m.dot) { g.fillStyle = "#8b98a5"; g.fillRect(m.x - 1.5, m.y - 1.5, 3, 3); }
+      else if (m.text) { g.fillStyle = m.color || "#4dff88"; g.font = "600 15px system-ui, sans-serif"; g.fillText(m.text, m.x, m.y - age * 40); }
+      else if (m.gone) { g.strokeStyle = "#ff5468"; g.lineWidth = 2; g.beginPath(); g.arc(m.x, m.y, 6 + age * 60, 0, TAU); g.stroke(); }
+      else { g.strokeStyle = "#8b98a5"; g.lineWidth = 2; g.beginPath();
+        g.moveTo(m.x - 5, m.y - 5); g.lineTo(m.x + 5, m.y + 5); g.moveTo(m.x + 5, m.y - 5); g.lineTo(m.x - 5, m.y + 5); g.stroke(); }
+    }
+    g.globalAlpha = 1;
+    drawHud();
+  }
+
+  hitFlash = Math.max(0, hitFlash - dt * 8);
+  drawCross();
+}
+function crossAt(x, y, c) {
+  const seg = [[-12, 0, -4, 0], [4, 0, 12, 0], [0, -12, 0, -4], [0, 4, 0, 12]];
+  f.lineCap = "round";
+  for (const [w, col] of [[4, "rgba(0,0,0,.7)"], [2, c]]) {
+    f.strokeStyle = col; f.lineWidth = w; f.beginPath();
+    for (const [a, b, d, e] of seg) { f.moveTo(x + a, y + b); f.lineTo(x + d, y + e); }
+    f.stroke();
+  }
+  f.fillStyle = c; f.beginPath(); f.arc(x, y, 1.6, 0, TAU); f.fill();
+}
+// In weapon modes the main crosshair sits where bullets land (cursor + recoil) and the cursor
+// itself becomes a faint ring. Otherwise the unlocked OS cursor (CSS) is the crosshair.
+const recoilView = () => run && state === "playing" && isWeapon(run.mode);
+function drawCross() {
+  f.clearRect(0, 0, W, H);
+  const c = settings.color, x = Math.round(cx) + .5, y = Math.round(cy) + .5;
+  if (recoilView()) {
+    if (locked) { f.strokeStyle = "rgba(255,255,255,.4)"; f.lineWidth = 1.5; f.beginPath(); f.arc(x, y, 5, 0, TAU); f.stroke(); }
+    crossAt(Math.round(cx + run.rx) + .5, Math.round(cy + run.ry) + .5, c);
+  } else if (locked) crossAt(x, y, c);
+  if (hitFlash > 0) {
+    f.globalAlpha = hitFlash; f.strokeStyle = "#fff"; f.lineWidth = 2; f.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { f.moveTo(x + sx * 7, y + sy * 7); f.lineTo(x + sx * 14, y + sy * 14); }
+    f.stroke(); f.globalAlpha = 1;
+  }
+}
+const RING_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><circle cx="8" cy="8" r="5" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.5"/></svg>')}") 8 8, default`;
+let appliedCursor = null;
+function syncCursor() {
+  const want = recoilView() ? RING_CURSOR : cursorCss(settings.color);
+  if (want !== appliedCursor) { document.body.style.cursor = want; appliedCursor = want; }
+}
+function cursorCss(c) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><g stroke-linecap="round">` +
+    `<path d="M4 16h8M20 16h8M16 4v8M16 20v8" stroke="rgba(0,0,0,.7)" stroke-width="4"/>` +
+    `<path d="M4 16h8M20 16h8M16 4v8M16 20v8" stroke="${c}" stroke-width="2"/></g>` +
+    `<circle cx="16" cy="16" r="1.6" fill="${c}"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, crosshair`;
+}
+function drawHud() {
+  const left = Math.max(0, run.dur - run.t);
+  g.fillStyle = "rgba(22,27,34,.85)"; g.fillRect(0, 0, W, HUD_H - 14);
+  g.textBaseline = "middle"; g.textAlign = "center"; g.fillStyle = left < 5 ? "#ff5468" : "#e6edf3";
+  g.font = "700 30px system-ui, sans-serif"; g.fillText(left.toFixed(1), W / 2, 28);
+  g.font = "600 18px system-ui, sans-serif"; g.fillStyle = "#e6edf3";
+  if (isWeapon(run.mode)) {
+    const w = WEAPONS[run.weapon];
+    g.textAlign = "left"; g.fillText("Score " + run.score, 20, 28);
+    g.textAlign = "right";
+    g.fillText(`Acc ${pct(run.fired ? run.landed / run.fired : 0)}   HS ${pct(run.landed ? run.heads / run.landed : 0)}   ` +
+      (run.mode === "team" ? "Wipes " + run.waves : "Kills " + run.kills), W - 20, 28);
+    g.textAlign = "right"; g.textBaseline = "alphabetic";
+    if (!run.reload) {
+      // infinite ammo: nothing to show
+    } else if (run.reloadT > 0) {
+      g.fillStyle = "#ffd23f"; g.font = "700 22px system-ui, sans-serif"; g.fillText("RELOADING", W - 24, H - 34);
+      g.fillStyle = "rgba(255,255,255,.15)"; g.fillRect(W - 154, H - 26, 130, 4);
+      g.fillStyle = "#ffd23f"; g.fillRect(W - 154, H - 26, 130 * (1 - run.reloadT / RELOAD_TIME), 4);
+    } else {
+      g.fillStyle = run.ammo <= w.mag * 0.2 ? "#ff5468" : "#e6edf3"; g.font = "700 34px system-ui, sans-serif";
+      g.fillText(run.ammo, W - 70, H - 26);
+      g.fillStyle = "#8b98a5"; g.font = "600 18px system-ui, sans-serif"; g.fillText("/ " + w.mag, W - 24, H - 26);
+    }
+    g.textAlign = "left"; g.fillStyle = "#8b98a5"; g.font = "600 14px system-ui, sans-serif";
+    g.fillText(w.name + (run.recoil ? "" : " · no recoil"), 24, H - 26);
+    return;
+  }
+  g.textAlign = "left";
+  g.fillText((isTracking(run.mode) ? "On target " + pct(run.onT / Math.max(run.t, 1e-6)) : "Score " + run.score), 20, 28);
+  g.textAlign = "right";
+  g.fillText(isTracking(run.mode) ? "Accuracy " + pct(run.heldT ? run.onT / run.heldT : 0)
+    : "Accuracy " + pct(run.shots ? run.hits / run.shots : 0) + "   Streak " + run.streak, W - 20, 28);
+  g.textBaseline = "alphabetic";
+}
+const isTracking = m => m === "track" || m === "sweep";
+const isWeapon = m => m === "duel" || m === "team";
+const pct = v => (v * 100).toFixed(1) + "%";
+
+// ---------- results ----------
+// infinite ammo removes reload downtime, so it gets its own best
+const keyOf = (mode, dur, size, weapon, recoil, reload) =>
+  `aim:best:${mode}:${dur}:${size}` + (isWeapon(mode) ? `:${weapon}:${recoil ? 1 : 0}` + (reload ? "" : ":inf") : "");
+const bestKey = () => keyOf(settings.mode, settings.dur, settings.size, settings.weapon, settings.recoil, settings.reload);
+function getBest(k) { try { return +localStorage.getItem(k) || null; } catch (e) { return null; } }
+function showResults() {
+  const r = run, key = keyOf(r.mode, r.dur, r.size, r.weapon, r.recoil, r.reload), prev = getBest(key);
+  const isBest = prev == null || r.score > prev;
+  if (isBest) try { localStorage.setItem(key, r.score); } catch (e) {}
+  const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+  let stats;
+  if (isWeapon(r.mode)) {
+    stats = [["Score", r.score, true],
+      r.mode === "team" ? ["Squads wiped", r.waves] : ["Kills", r.kills],
+      ["Accuracy", pct(r.fired ? r.landed / r.fired : 0)], ["Headshots", pct(r.landed ? r.heads / r.landed : 0)],
+      ["Avg TTK", r.ttk.length ? Math.round(avg(r.ttk) * 1000) + " ms" : "–"],
+      r.mode === "team" ? ["Avg wipe time", r.waveTimes.length ? avg(r.waveTimes).toFixed(2) + " s" : "–"]
+                        : ["Avg time to first hit", r.engage.length ? Math.round(avg(r.engage) * 1000) + " ms" : "–"],
+      ["Damage", Math.round(r.dmg)]];
+    if (r.mode === "team") stats.splice(2, 0, ["Kills", r.kills]);
+  } else if (isTracking(r.mode)) {
+    stats = [["Score", r.score, true], ["On target", pct(r.onT / r.dur)],
+      ["Tracking accuracy", pct(r.heldT ? r.onT / r.heldT : 0)], ["Fire held", pct(r.heldT / r.dur)]];
+  } else {
+    stats = [["Score", r.score, true], ["Accuracy", pct(r.shots ? r.hits / r.shots : 0)],
+      ["Hits", r.hits], ["Misses", r.shots - r.hits],
+      r.mode === "grid" ? ["Kills / sec", (r.hits / r.dur).toFixed(2)] : ["Avg time to kill", Math.round(avg(r.ttk) * 1000) + " ms"],
+      ["Best streak", r.bestStreak]];
+    if (r.mode === "shrink") stats.push(["Expired", r.expired]);
+  }
+  $("#resTitle").innerHTML = `${MODES[r.mode].name} · ${r.dur}s` + (isWeapon(r.mode) ? ` · ${WEAPONS[r.weapon].name}` : "") +
+    (isBest ? `<span class="newbest">New best!</span>` : `<span class="newbest" style="color:var(--dim)">Best: ${prev}</span>`);
+  $("#resStats").innerHTML = stats.map(([k, v, big]) =>
+    `<div class="stat${big ? " big" : ""}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+}
+
+// ---------- menu ----------
+for (const box of document.querySelectorAll(".seg[data-key]")) {
+  const key = box.dataset.key;
+  for (const [val, label] of SEGS[key]) {
+    const b = document.createElement("button");
+    b.dataset.val = JSON.stringify(val);
+    if (key === "color") { b.className = "swatch"; b.style.background = val; }
+    else b.textContent = label;
+    b.addEventListener("click", () => {
+      settings[key] = val; save(); refresh();
+      if (key === "lock" && !val && document.pointerLockElement) document.exitPointerLock();
+    });
+    box.appendChild(b);
+  }
+}
+for (const b of document.querySelectorAll("[data-sens]")) b.addEventListener("click", () => {
+  settings.sens = Math.round(clamp(settings.sens + +b.dataset.sens, 0.05, 5) * 100) / 100; save(); refresh();
+});
+$("#rebind").addEventListener("click", () => { listening = true; refresh(); });
+$("#resetBind").addEventListener("click", () => { listening = false; settings.fire = DEFAULTS.fire.slice(); save(); refresh(); });
+$("#startBtn").addEventListener("click", () => { ac(); startRun(); });
+$("#retryBtn").addEventListener("click", () => startRun());
+$("#restartBtn").addEventListener("click", () => startRun());
+$("#resumeBtn").addEventListener("click", resume);
+$("#resMenuBtn").addEventListener("click", goMenu);
+$("#pauseMenuBtn").addEventListener("click", goMenu);
+
+function refresh() {
+  for (const box of document.querySelectorAll(".seg[data-key]"))
+    for (const b of box.children) b.classList.toggle("on", b.dataset.val === JSON.stringify(settings[box.dataset.key]));
+  $("#modeDesc").textContent = MODES[settings.mode].desc;
+  for (const row of document.querySelectorAll(".wrow")) row.style.display = isWeapon(settings.mode) ? "" : "none";
+  $("#sensVal").textContent = settings.sens.toFixed(2);
+  $("#fireVal").textContent = listening ? "Press a button…" : settings.fire.map(btnName).join(", ");
+  const b = getBest(bestKey());
+  $("#menuBest").textContent = b != null ? `Best for this setup: ${b}` : "";
+}
+function updatePadStatus(pads) {
+  const dot = $("#padDot"), txt = $("#padText");
+  dot.className = "dot" + (fireHeld ? " fire" : pads.length ? " ok" : "");
+  txt.textContent = pads.length
+    ? pads.map(p => p.id.replace(/\s*\(.*?Vendor.*?\)/i, "")).join(" | ") + (fireHeld ? "  — FIRE" : "")
+    : "No gamepad detected. Press any button on it to wake it up.";
+}
+
+// ---------- main loop ----------
+let last = performance.now(), padUi = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const pads = pollPads();
+  if (state === "playing") update(dt);
+  if (overlayVisible()) {
+    const b = locked ? elAtCursor() : null;
+    if (b !== hovered) { hovered && hovered.classList.remove("hover"); b && b.classList.add("hover"); hovered = b; }
+    if (state === "menu" && (padUi -= dt) <= 0) { padUi = 0.1; updatePadStatus(pads); }
+  }
+  syncCursor();
+  render(dt);
+  requestAnimationFrame(frame);
+}
+refresh(); showPanel("menu");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
