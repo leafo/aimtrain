@@ -175,8 +175,8 @@ const MODES = {
   track:  { name: "Tracking", desc: "Hold fire and stay on a strafing target." },
   sweep:  { name: "Sweep",    desc: "Hold fire and follow a target gliding in long, smooth arcs across the whole screen." },
   duel:   { name: "Duel",      desc: "Hold fire on one strafing, jumping, dashing enemy at a time. Recoil climbs, so pull down. Kill it and the next one spawns elsewhere." },
-  team:   { name: "Team Wipe", desc: "Three enemies at once. Wipe the squad as fast as you can, then the next squad spawns." },
 };
+if (!MODES[settings.mode]) settings.mode = DEFAULTS.mode; // saved mode may have been removed
 const RELOAD_TIME = 0.35; // kept short on purpose: this trainer is about aim, not reload timing
 // numbers are in the spirit of a high-TTK arena shooter, not copied from any game
 const WEAPONS = {
@@ -185,9 +185,9 @@ const WEAPONS = {
   lmg: { name: "LMG", rpm: 650, dmg: 20, mag: 70, kick: 0.12, jitter: 0.07, spread: 0.06, head: 1.25 },
 };
 const CLASSES = {
-  light:  { hp: 150, scale: 0.85, speed: 10,  color: "#ffc145", dash: true },
-  medium: { hp: 250, scale: 1,    speed: 7.5, color: "#ff5468" },
-  heavy:  { hp: 350, scale: 1.2,  speed: 5.5, color: "#b46cff" },
+  light:  { hp: 150, scale: 0.85, speed: 8,   color: "#ffc145", dash: true },
+  medium: { hp: 250, scale: 1,    speed: 6,   color: "#ff5468" },
+  heavy:  { hp: 350, scale: 1.2,  speed: 4.5, color: "#b46cff" },
 };
 const SEGS = {
   mode: Object.entries(MODES).map(([k, m]) => [k, m.name]),
@@ -350,7 +350,7 @@ function startRun() {
     expired: 0, streak: 0, bestStreak: 0, ttk: [], onT: 0, heldT: 0, targets: [], nextSpawn: 0,
     lastCell: null, lastPos: null, tick: 0,
     weapon: settings.weapon, recoil: settings.recoil, reload: settings.reload, ammo: WEAPONS[settings.weapon].mag, reloadT: 0, cd: 0, rx: 0, ry: 0,
-    fired: 0, landed: 0, heads: 0, dmg: 0, kills: 0, engage: [], waves: 0, waveTimes: [], waveStart: 0 };
+    fired: 0, landed: 0, heads: 0, dmg: 0, kills: 0, engage: [] };
   particles = []; marks = [];
   state = "ready"; showPanel(null);
 }
@@ -468,39 +468,39 @@ function groundRange(cls) {
   const a = area(), s = run.R * CLASSES[cls].scale;
   return [a.y0 + s * 2.4 + s * 2.6, a.y1 - s * 1.3]; // keep head (plus jump room) and feet on screen
 }
-function spawnEnemy(xMin, xMax) {
+function spawnEnemy() {
   const a = area(), r = Math.random();
   const cls = r < 0.35 ? "light" : r < 0.75 ? "medium" : "heavy", c = CLASSES[cls];
   const [g0, g1] = groundRange(cls), m = run.R * 2;
   let x, gy, n = 0;
-  do { x = rand(Math.max(a.x0 + m, xMin ?? 0), Math.min(a.x1 - m, xMax ?? W)); gy = rand(g0, g1); }
+  do { x = rand(a.x0 + m, a.x1 - m); gy = rand(g0, g1); }
   while (Math.hypot(x - cx, gy - cy) < run.R * 6 && ++n < 30);
   const now = run.t;
   run.targets.push({ enemy: true, cls, x, y: gy, gy, tgy: gy, vx: 0, vy: 0, air: false, hp: c.hp, max: c.hp,
-    dir: Math.random() < 0.5 ? -1 : 1, nextFlip: now + rand(0.2, 0.6), nextJump: now + rand(0.8, 3),
-    nextDash: now + rand(0.8, 2.5), dashT: 0, dashDir: 1, nextDrift: now + rand(1, 3), born: now, firstHit: null, flash: 0 });
-}
-function spawnWave() {
-  if (run.mode === "duel") spawnEnemy();
-  else { const third = W / 3; for (let i = 0; i < 3; i++) spawnEnemy(third * i, third * (i + 1)); }
-  run.waveStart = run.t;
+    dir: Math.random() < 0.5 ? -1 : 1, nextFlip: now + rand(0.4, 1), adad: 0, nextJump: now + rand(2, 5),
+    nextDash: now + rand(2, 4), dashT: 0, dashDir: 1, nextDrift: now + rand(1, 3), born: now, firstHit: null, flash: 0 });
 }
 function updateEnemy(e, dt) {
   const c = CLASSES[e.cls], R = run.R, sp = c.speed * R, a = area(), d = dims(e);
-  if (run.t >= e.nextFlip) { // ADAD strafing with the odd stop
-    const r = Math.random();
-    e.dir = r < 0.12 ? 0 : r < 0.75 ? -(e.dir || 1) : (Math.random() < 0.5 ? -1 : 1);
-    e.nextFlip = run.t + rand(0.15, 0.8);
+  if (run.t >= e.nextFlip) {
+    // mostly committed strafes, with an occasional short ADAD burst or a brief stop
+    if (e.adad > 0) { e.adad--; e.dir = -(e.dir || 1); e.nextFlip = run.t + rand(0.22, 0.35); }
+    else {
+      const r = Math.random();
+      if (r < 0.15) { e.dir = 0; e.nextFlip = run.t + rand(0.3, 0.8); }
+      else if (r < 0.35) { e.adad = 2 + (Math.random() * 3 | 0); e.dir = -(e.dir || 1); e.nextFlip = run.t + rand(0.22, 0.35); }
+      else { e.dir = Math.random() < 0.6 ? -(e.dir || 1) : (e.dir || 1); e.nextFlip = run.t + rand(0.6, 1.6); }
+    }
   }
-  if (c.dash && run.t >= e.nextDash) { e.dashT = 0.18; e.dashDir = Math.random() < 0.5 ? -1 : 1; e.nextDash = run.t + rand(1.2, 3); }
-  const tv = e.dashT > 0 ? e.dashDir * sp * 3.2 : e.dir * sp;
+  if (c.dash && run.t >= e.nextDash) { e.dashT = 0.18; e.dashDir = Math.random() < 0.5 ? -1 : 1; e.nextDash = run.t + rand(3, 6); }
+  const tv = e.dashT > 0 ? e.dashDir * sp * 3 : e.dir * sp;
   e.dashT -= dt;
-  e.vx += (tv - e.vx) * Math.min(1, dt * 12);
+  e.vx += (tv - e.vx) * Math.min(1, dt * 7);
   e.x += e.vx * dt;
   if (e.x < a.x0 + d.bw || e.x > a.x1 - d.bw) { e.x = clamp(e.x, a.x0 + d.bw, a.x1 - d.bw); e.dir = e.x < W / 2 ? 1 : -1; e.vx = 0; }
-  if (run.t >= e.nextDrift) { const [g0, g1] = groundRange(e.cls); e.tgy = rand(g0, g1); e.nextDrift = run.t + rand(1.5, 4); }
-  e.gy += (e.tgy - e.gy) * Math.min(1, dt * 0.8);
-  if (!e.air && run.t >= e.nextJump) { e.air = true; e.vy = -R * 13; e.nextJump = run.t + rand(1, 4); }
+  if (run.t >= e.nextDrift) { const [g0, g1] = groundRange(e.cls); e.tgy = rand(g0, g1); e.nextDrift = run.t + rand(3, 6); }
+  e.gy += (e.tgy - e.gy) * Math.min(1, dt * 0.5);
+  if (!e.air && run.t >= e.nextJump) { e.air = true; e.vy = -R * 13; e.nextJump = run.t + rand(3, 7); }
   if (e.air) {
     e.vy += R * 38 * dt; e.y += e.vy * dt;
     if (e.y >= e.gy) { e.y = e.gy; e.air = false; e.vy = 0; }
@@ -541,10 +541,7 @@ function shoot() {
     run.targets.splice(run.targets.indexOf(e), 1);
     burst(e.x, e.y, CLASSES[e.cls].color);
     tone(500, 0.18, "sawtooth", 0.08, 1400); rumble(0.6, 0.4, 90);
-    if (!run.targets.length) {
-      if (run.mode === "team") { run.waves++; run.waveTimes.push(run.t - run.waveStart); }
-      run.nextSpawn = run.t + (run.mode === "team" ? 0.5 : 0.25);
-    }
+    run.nextSpawn = run.t + 0.25;
   }
 }
 function startReload() {
@@ -554,7 +551,7 @@ function startReload() {
 }
 function updateWeapon(dt) {
   const w = WEAPONS[run.weapon];
-  if (!run.targets.length && run.t >= run.nextSpawn) spawnWave();
+  if (!run.targets.length && run.t >= run.nextSpawn) spawnEnemy();
   for (const e of run.targets) updateEnemy(e, dt);
   if (run.reloadT > 0) {
     run.reloadT -= dt;
@@ -806,7 +803,7 @@ function drawHud() {
     g.textAlign = "left"; g.fillText("Score " + run.score, 20, 28);
     g.textAlign = "right";
     g.fillText(`Acc ${pct(run.fired ? run.landed / run.fired : 0)}   HS ${pct(run.landed ? run.heads / run.landed : 0)}   ` +
-      (run.mode === "team" ? "Wipes " + run.waves : "Kills " + run.kills), W - 20, 28);
+      "Kills " + run.kills, W - 20, 28);
     g.textAlign = "right"; g.textBaseline = "alphabetic";
     if (!run.reload) {
       // infinite ammo: nothing to show
@@ -831,7 +828,7 @@ function drawHud() {
   g.textBaseline = "alphabetic";
 }
 const isTracking = m => m === "track" || m === "sweep";
-const isWeapon = m => m === "duel" || m === "team";
+const isWeapon = m => m === "duel";
 const pct = v => (v * 100).toFixed(1) + "%";
 
 // ---------- results ----------
@@ -848,13 +845,11 @@ function showResults() {
   let stats;
   if (isWeapon(r.mode)) {
     stats = [["Score", r.score, true],
-      r.mode === "team" ? ["Squads wiped", r.waves] : ["Kills", r.kills],
+      ["Kills", r.kills],
       ["Accuracy", pct(r.fired ? r.landed / r.fired : 0)], ["Headshots", pct(r.landed ? r.heads / r.landed : 0)],
       ["Avg TTK", r.ttk.length ? Math.round(avg(r.ttk) * 1000) + " ms" : "–"],
-      r.mode === "team" ? ["Avg wipe time", r.waveTimes.length ? avg(r.waveTimes).toFixed(2) + " s" : "–"]
-                        : ["Avg time to first hit", r.engage.length ? Math.round(avg(r.engage) * 1000) + " ms" : "–"],
+      ["Avg time to first hit", r.engage.length ? Math.round(avg(r.engage) * 1000) + " ms" : "–"],
       ["Damage", Math.round(r.dmg)]];
-    if (r.mode === "team") stats.splice(2, 0, ["Kills", r.kills]);
   } else if (isTracking(r.mode)) {
     stats = [["Score", r.score, true], ["On target", pct(r.onT / r.dur)],
       ["Tracking accuracy", pct(r.heldT ? r.onT / r.heldT : 0)], ["Fire held", pct(r.heldT / r.dur)]];
