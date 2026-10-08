@@ -125,7 +125,7 @@
       <kbd>Start</kbd> = start / pause, <kbd>X</kbd> = reload, <kbd>Back</kbd> = menu, <kbd>Esc</kbd> = pause.
       “System” uses the real OS cursor (lowest latency, but stops at the screen edge). “Pointer lock” draws its own crosshair from raw relative motion so it never hits the edge, at the cost of a little display latency. If Steam Input maps your trigger to a mouse click, keep “Mouse click fires” on.</p>
     <p class="hint mob">Tap anywhere to fire; hold your finger down in tracking and weapon modes. Tap the top bar to pause.
-      Reloads are automatic. “Pointer” aims where the back of the phone points (turn it left/right, tilt it up/down); “Steering wheel” rolls it for left/right instead.
+      Reloads are automatic. “Pointer” aims where the phone points: turn left/right, tilt up/down, at any holding angle. “Steering wheel” rolls it for left/right instead.
       If the crosshair moves the wrong way, use Invert.</p>
   </section>
 
@@ -280,6 +280,9 @@ document.addEventListener("pointerlockchange", () => {
 
 // ---------- mobile: gyro, fullscreen, landscape ----------
 let gyroState = "off", gyroTs = null, touchHeld = false, wake = null; // gyroState: off | on | denied | none
+let grav = null; // low-passed accelerationIncludingGravity, device coords
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const norm = a => { const l = Math.hypot(...a) || 1; return a.map(v => v / l); };
 const screenAngle = () => screen.orientation ? screen.orientation.angle : (window.orientation || 0);
 function onMotion(e) {
   const r = e.rotationRate;
@@ -287,13 +290,26 @@ function onMotion(e) {
   gyroState = "on";
   const dt = gyroTs == null ? 0 : Math.min(0.05, (e.timeStamp - gyroTs) / 1000);
   gyroTs = e.timeStamp;
+  const a = e.accelerationIncludingGravity;
+  if (a && a.x != null) {
+    const m = [a.x, a.y, a.z];
+    grav = grav ? grav.map((v, i) => v + (m[i] - v) * 0.1) : m;
+  }
   if (!dt || overlayVisible()) return;
   // rotationRate is deg/s about the device's natural-portrait axes. Despite sharing names with
   // deviceorientation, here alpha is x, beta is y and gamma is z (out of the screen), as in Safari and the
-  // current spec. Project onto the axes of the screen as currently displayed.
+  // current spec.
+  const w = [r.alpha, r.beta, r.gamma];
+  // the displayed screen's right and down directions in device coords
   const th = (screenAngle() + (rotated ? 90 : 0)) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
-  const pitch = r.alpha * c - r.beta * s, yaw = -r.alpha * s - r.beta * c;
-  let gx = settings.gyroAxis === "roll" ? -r.gamma : yaw, gy = -pitch;
+  const right = [c, -s, 0], down = [-s, -c, 0];
+  // Turning is measured about the real vertical (from gravity) rather than a fixed device axis, so pointer
+  // aim works whether the phone is held upright or tipped back like a gamepad. Gravity's sign differs
+  // between browsers; the phone is held screen-up or facing the player, so pick the sign that agrees.
+  let up = [-down[0], -down[1], 0];
+  if (grav) { const gu = norm(grav); up = dot(gu, up) + gu[2] < 0 ? gu.map(v => -v) : gu; }
+  const fwd = norm([up[1] * right[2] - up[2] * right[1], up[2] * right[0] - up[0] * right[2], up[0] * right[1] - up[1] * right[0]]);
+  let gx = settings.gyroAxis === "roll" ? dot(w, fwd) : -dot(w, up), gy = -dot(w, right);
   if (Math.hypot(gx, gy) < 0.5) return; // sensor noise while holding still
   if (settings.gyroInvert.includes("x")) gx = -gx;
   if (settings.gyroInvert.includes("y")) gy = -gy;
