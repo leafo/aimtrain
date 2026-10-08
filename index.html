@@ -210,10 +210,11 @@ const btnName = i => BTN_NAMES[i] || "B" + i;
 
 // ---------- canvas ----------
 const game = $("#game"), g = game.getContext("2d");
-// desynchronized lets the crosshair layer skip the compositor where supported (lower latency, may tear)
-const fx = $("#fx"), f = fx.getContext("2d", { desynchronized: true }) || fx.getContext("2d");
 const MOBILE = matchMedia("(hover: none) and (pointer: coarse)").matches;
 if (MOBILE) document.body.classList.add("mobile");
+// desynchronized lets the crosshair layer skip the compositor where supported (lower latency, may tear).
+// Not on mobile: in fullscreen Android Chrome puts it on an overlay plane without alpha, blacking out the game.
+const fx = $("#fx"), f = (!MOBILE && fx.getContext("2d", { desynchronized: true })) || fx.getContext("2d");
 let W = 0, H = 0, DPR = 1;
 let cx = innerWidth / 2, cy = innerHeight / 2;
 // On mobile the app is always landscape. When the browser can't lock orientation (iOS, or Android before
