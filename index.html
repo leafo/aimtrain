@@ -125,7 +125,7 @@
       <kbd>Start</kbd> = start / pause, <kbd>X</kbd> = reload, <kbd>Back</kbd> = menu, <kbd>Esc</kbd> = pause.
       “System” uses the real OS cursor (lowest latency, but stops at the screen edge). “Pointer lock” draws its own crosshair from raw relative motion so it never hits the edge, at the cost of a little display latency. If Steam Input maps your trigger to a mouse click, keep “Mouse click fires” on.</p>
     <p class="hint mob">Tap anywhere to fire; hold your finger down in tracking and weapon modes. Tap the top bar to pause.
-      Reloads are automatic. “Turn” aims by turning the phone left and right, “Lean” by tilting it like a steering wheel.
+      Reloads are automatic. “Pointer” aims where the back of the phone points (turn it left/right, tilt it up/down); “Steering wheel” rolls it for left/right instead.
       If the crosshair moves the wrong way, use Invert.</p>
   </section>
 
@@ -201,7 +201,7 @@ const SEGS = {
   rumble: [[true, "On"], [false, "Off"]],
   sound: [[true, "On"], [false, "Off"]],
   color: [["#4dff88"], ["#00e5ff"], ["#ffffff"], ["#ff4dd2"], ["#ffd23f"]],
-  gyroAxis: [["yaw", "Turn"], ["roll", "Lean"]],
+  gyroAxis: [["yaw", "Pointer"], ["roll", "Steering wheel"]],
   gyroInvert: [["none", "Off"], ["x", "Horizontal"], ["y", "Vertical"], ["xy", "Both"]],
 };
 const SIZES = { S: 0.02, M: 0.03, L: 0.042 };
@@ -287,11 +287,12 @@ function onMotion(e) {
   const dt = gyroTs == null ? 0 : Math.min(0.05, (e.timeStamp - gyroTs) / 1000);
   gyroTs = e.timeStamp;
   if (!dt || overlayVisible()) return;
-  // rotationRate is deg/s about the device's natural-portrait axes (beta: x, gamma: y, alpha: z out of the
-  // screen); project onto the axes of the screen as currently displayed
+  // rotationRate is deg/s about the device's natural-portrait axes. Despite sharing names with
+  // deviceorientation, here alpha is x, beta is y and gamma is z (out of the screen), as in Safari and the
+  // current spec. Project onto the axes of the screen as currently displayed.
   const th = (screenAngle() + (rotated ? 90 : 0)) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
-  const pitch = r.beta * c - r.gamma * s, yaw = -r.beta * s - r.gamma * c;
-  let gx = settings.gyroAxis === "roll" ? -r.alpha : yaw, gy = -pitch;
+  const pitch = r.alpha * c - r.beta * s, yaw = -r.alpha * s - r.beta * c;
+  let gx = settings.gyroAxis === "roll" ? -r.gamma : yaw, gy = -pitch;
   if (Math.hypot(gx, gy) < 0.5) return; // sensor noise while holding still
   if (settings.gyroInvert.includes("x")) gx = -gx;
   if (settings.gyroInvert.includes("y")) gy = -gy;
