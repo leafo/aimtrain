@@ -18,6 +18,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
     font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; cursor: crosshair; user-select: none; }
+  #app { position: fixed; inset: 0; }
   canvas { position: fixed; inset: 0; display: block; }
   #fx { pointer-events: none; z-index: 3; }
   #overlay { position: fixed; inset: 0; z-index: 2; display: none; align-items: center; justify-content: center;
@@ -62,19 +63,35 @@
   .stat.big .v { font-size: 40px; }
   .newbest { color: var(--good); font-size: 14px; font-weight: 600; margin-left: 8px; }
   @media (max-width: 560px) {
-    .row { grid-template-columns: 1fr; gap: 4px; }
-    .desc { margin-left: 0; }
-    .stats { grid-template-columns: repeat(2, 1fr); }
-    .stat.big { grid-column: span 2; }
+    body:not(.mobile) .row { grid-template-columns: 1fr; gap: 4px; }
+    body:not(.mobile) .desc { margin-left: 0; }
+    body:not(.mobile) .stats { grid-template-columns: repeat(2, 1fr); }
+    body:not(.mobile) .stat.big { grid-column: span 2; }
   }
+  /* mobile: the layout is always landscape (rotated by CSS when the browser can't lock it), so viewport
+     media queries don't describe it; everything mobile-specific hangs off body.mobile instead */
+  body.mobile .desk, body:not(.mobile) .mob { display: none; }
+  body.mobile { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  body.mobile #game { touch-action: none; }
+  body.mobile #overlay { padding: 8px; touch-action: manipulation; }
+  body.mobile .panel { padding: 12px 16px; border-radius: 10px; }
+  body.mobile h1 { font-size: 20px; }
+  body.mobile .sub { margin: 2px 0 8px; }
+  body.mobile .row { grid-template-columns: 120px 1fr; margin: 5px 0; }
+  body.mobile .desc { margin: 0 0 6px 130px; }
+  body.mobile button { padding: 6px 10px; }
+  body.mobile .stat .v { font-size: 20px; }
+  body.mobile .stat.big .v { font-size: 30px; }
 </style>
 </head>
 <body>
+<div id="app">
 <canvas id="game"></canvas>
 <div id="overlay">
   <section id="menu" class="panel">
     <h1>Gyro <span>Aim</span> Trainer</h1>
-    <p class="sub">Aim with the mouse (or gyro-as-mouse), fire with your gamepad.</p>
+    <p class="sub desk">Aim with the mouse (or gyro-as-mouse), fire with your gamepad.</p>
+    <p class="sub mob">Hold your phone sideways like a gamepad. Aim by moving it, tap anywhere to fire.</p>
 
     <div class="row"><label>Mode</label><div class="seg" data-key="mode"></div></div>
     <p class="desc" id="modeDesc"></p>
@@ -83,13 +100,17 @@
     <div class="row wrow"><label>Reloading</label><div class="seg" data-key="reload"></div></div>
     <div class="row"><label>Duration</label><div class="seg" data-key="dur"></div></div>
     <div class="row"><label>Target size</label><div class="seg" data-key="size"></div></div>
-    <div class="row"><label>Cursor</label><div class="seg" data-key="lock"></div></div>
-    <div class="row"><label>Sensitivity</label>
+    <div class="row desk"><label>Cursor</label><div class="seg" data-key="lock"></div></div>
+    <div class="row desk"><label>Sensitivity</label>
       <div class="stepper"><button data-sens="-0.05">−</button><b id="sensVal"></b><button data-sens="0.05">+</button>
         <span style="color:var(--dim);font-size:12px">pointer lock only</span></div></div>
-    <div class="row"><label>Fire button</label>
+    <div class="row desk"><label>Fire button</label>
       <div class="stepper"><b id="fireVal" style="min-width:90px"></b><button id="rebind">Rebind</button><button id="resetBind">Reset</button></div></div>
-    <div class="row"><label>Mouse click fires</label><div class="seg" data-key="mouseFire"></div></div>
+    <div class="row desk"><label>Mouse click fires</label><div class="seg" data-key="mouseFire"></div></div>
+    <div class="row mob"><label>Gyro sensitivity</label>
+      <div class="stepper"><button data-gsens="-0.25">−</button><b id="gsensVal"></b><button data-gsens="0.25">+</button></div></div>
+    <div class="row mob"><label>Horizontal aim</label><div class="seg" data-key="gyroAxis"></div></div>
+    <div class="row mob"><label>Invert</label><div class="seg" data-key="gyroInvert"></div></div>
     <div class="row"><label>Rumble</label><div class="seg" data-key="rumble"></div></div>
     <div class="row"><label>Sound</label><div class="seg" data-key="sound"></div></div>
     <div class="row"><label>Crosshair</label><div class="seg" data-key="color"></div></div>
@@ -100,9 +121,12 @@
       <button class="primary" id="startBtn" data-primary>Start</button>
       <span class="best" id="menuBest"></span>
     </div>
-    <p class="hint">Gamepad fire clicks whatever is under the crosshair, so the whole menu works from the controller.
+    <p class="hint desk">Gamepad fire clicks whatever is under the crosshair, so the whole menu works from the controller.
       <kbd>Start</kbd> = start / pause, <kbd>X</kbd> = reload, <kbd>Back</kbd> = menu, <kbd>Esc</kbd> = pause.
       “System” uses the real OS cursor (lowest latency, but stops at the screen edge). “Pointer lock” draws its own crosshair from raw relative motion so it never hits the edge, at the cost of a little display latency. If Steam Input maps your trigger to a mouse click, keep “Mouse click fires” on.</p>
+    <p class="hint mob">Tap anywhere to fire; hold your finger down in tracking and weapon modes. Tap the top bar to pause.
+      Reloads are automatic. “Turn” aims by turning the phone left and right, “Lean” by tilting it like a steering wheel.
+      If the crosshair moves the wrong way, use Invert.</p>
   </section>
 
   <section id="results" class="panel">
@@ -124,6 +148,7 @@
   </section>
 </div>
 <canvas id="fx"></canvas>
+</div>
 
 <script>
 "use strict";
@@ -134,7 +159,8 @@ const rand = (a, b) => a + Math.random() * (b - a);
 
 // ---------- settings ----------
 const DEFAULTS = { mode: "grid", dur: 60, size: "M", sens: 1, lock: false, mouseFire: true,
-  rumble: true, sound: true, color: "#4dff88", fire: [7, 5], weapon: "ar", recoil: true, reload: true };
+  rumble: true, sound: true, color: "#4dff88", fire: [7, 5], weapon: "ar", recoil: true, reload: true,
+  gyroSens: 2, gyroAxis: "yaw", gyroInvert: "none" };
 let settings = (() => {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem("aim:settings") || "{}") }; }
   catch (e) { return { ...DEFAULTS }; }
@@ -175,6 +201,8 @@ const SEGS = {
   rumble: [[true, "On"], [false, "Off"]],
   sound: [[true, "On"], [false, "Off"]],
   color: [["#4dff88"], ["#00e5ff"], ["#ffffff"], ["#ff4dd2"], ["#ffd23f"]],
+  gyroAxis: [["yaw", "Turn"], ["roll", "Lean"]],
+  gyroInvert: [["none", "Off"], ["x", "Horizontal"], ["y", "Vertical"], ["xy", "Both"]],
 };
 const SIZES = { S: 0.02, M: 0.03, L: 0.042 };
 const BTN_NAMES = ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Back", "Start", "LS", "RS", "Up", "Down", "Left", "Right", "Home"];
@@ -184,10 +212,20 @@ const btnName = i => BTN_NAMES[i] || "B" + i;
 const game = $("#game"), g = game.getContext("2d");
 // desynchronized lets the crosshair layer skip the compositor where supported (lower latency, may tear)
 const fx = $("#fx"), f = fx.getContext("2d", { desynchronized: true }) || fx.getContext("2d");
+const MOBILE = matchMedia("(hover: none) and (pointer: coarse)").matches;
+if (MOBILE) document.body.classList.add("mobile");
 let W = 0, H = 0, DPR = 1;
 let cx = innerWidth / 2, cy = innerHeight / 2;
+// On mobile the app is always landscape. When the browser can't lock orientation (iOS, or Android before
+// fullscreen) and the viewport is portrait, #app is rotated 90° clockwise so the phone is held top-left.
+let rotated = false;
+const toScreen = (x, y) => rotated ? { x: innerWidth - y, y: x } : { x, y };
+const toContent = (x, y) => rotated ? { x: y, y: innerWidth - x } : { x, y };
 function resize() {
-  DPR = devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+  rotated = MOBILE && innerHeight > innerWidth;
+  $("#app").style.cssText = rotated ? `inset: auto; top: 0; left: 0; width: ${innerHeight}px; height: ${innerWidth}px; ` +
+    `transform-origin: 0 0; transform: translateX(${innerWidth}px) rotate(90deg);` : "";
+  DPR = devicePixelRatio || 1; W = rotated ? innerHeight : innerWidth; H = rotated ? innerWidth : innerHeight;
   for (const c of [game, fx]) { c.width = W * DPR; c.height = H * DPR; c.style.width = W + "px"; c.style.height = H + "px"; }
   g.setTransform(DPR, 0, 0, DPR, 0, 0); f.setTransform(DPR, 0, 0, DPR, 0, 0);
   cx = clamp(cx, 0, W); cy = clamp(cy, 0, H);
@@ -221,12 +259,15 @@ function rumble(weak, strong, ms) {
     const v = p && p.vibrationActuator;
     if (v && v.playEffect) v.playEffect("dual-rumble", { duration: ms, weakMagnitude: weak, strongMagnitude: strong }).catch(() => {});
   }
+  // phone motors only do one strength, so skip the light per-shot buzz
+  if (MOBILE && strong >= 0.1 && navigator.vibrate) navigator.vibrate(ms);
 }
 
 // ---------- pointer lock ----------
 let locked = false;
+const wantLock = () => settings.lock && !MOBILE;
 async function requestLock() {
-  if (!settings.lock || document.pointerLockElement) return;
+  if (!wantLock() || document.pointerLockElement) return;
   const el = document.body;
   try { await el.requestPointerLock({ unadjustedMovement: true }); }
   catch (e) { try { await el.requestPointerLock(); } catch (e2) {} }
@@ -235,6 +276,58 @@ document.addEventListener("pointerlockchange", () => {
   locked = !!document.pointerLockElement;
   if (!locked && (state === "playing" || state === "ready")) pause();
 });
+
+// ---------- mobile: gyro, fullscreen, landscape ----------
+let gyroState = "off", gyroTs = null, touchHeld = false, wake = null; // gyroState: off | on | denied | none
+const screenAngle = () => screen.orientation ? screen.orientation.angle : (window.orientation || 0);
+function onMotion(e) {
+  const r = e.rotationRate;
+  if (!r || r.alpha == null) { if (gyroState !== "on") gyroState = "none"; return; }
+  gyroState = "on";
+  const dt = gyroTs == null ? 0 : Math.min(0.05, (e.timeStamp - gyroTs) / 1000);
+  gyroTs = e.timeStamp;
+  if (!dt || overlayVisible()) return;
+  // rotationRate is deg/s about the device's natural-portrait axes (beta: x, gamma: y, alpha: z out of the
+  // screen); project onto the axes of the screen as currently displayed
+  const th = (screenAngle() + (rotated ? 90 : 0)) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+  const pitch = r.beta * c - r.gamma * s, yaw = -r.beta * s - r.gamma * c;
+  let gx = settings.gyroAxis === "roll" ? -r.alpha : yaw, gy = -pitch;
+  if (Math.hypot(gx, gy) < 0.5) return; // sensor noise while holding still
+  if (settings.gyroInvert.includes("x")) gx = -gx;
+  if (settings.gyroInvert.includes("y")) gy = -gy;
+  const k = settings.gyroSens * W / 90 * dt; // sens 1 = a 90° turn sweeps the full width
+  cx = clamp(cx + gx * k, 0, W); cy = clamp(cy + gy * k, 0, H);
+  drawCross();
+}
+// requestPermission, requestFullscreen and the wake lock all need a user gesture, so this runs on taps
+function enterMobile() {
+  const DME = window.DeviceMotionEvent;
+  if (gyroState === "off" && DME && typeof DME.requestPermission === "function") {
+    DME.requestPermission().then(p => { if (p === "granted") addEventListener("devicemotion", onMotion); else gyroState = "denied"; })
+      .catch(() => { gyroState = "denied"; });
+  }
+  const el = document.documentElement;
+  if (el.requestFullscreen && !document.fullscreenElement)
+    el.requestFullscreen({ navigationUI: "hide" }).then(() => screen.orientation.lock("landscape")).catch(() => {});
+  if (!wake && navigator.wakeLock)
+    navigator.wakeLock.request("screen").then(w => { wake = w; w.addEventListener("release", () => { wake = null; }); }).catch(() => {});
+}
+if (MOBILE) {
+  if (!(window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function")) addEventListener("devicemotion", onMotion);
+  document.addEventListener("click", enterMobile, true);
+  document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) pause(); });
+  game.addEventListener("touchstart", e => {
+    e.preventDefault(); // also stops the emulated mouse events
+    ac();
+    if (state !== "playing" && state !== "ready") return;
+    const t = e.changedTouches[0];
+    if (toContent(t.clientX, t.clientY).y < HUD_H) { pause(); return; }
+    touchHeld = true; fire("touch");
+  }, { passive: false });
+  game.addEventListener("touchend", enterMobile); // touchstart doesn't count as a user gesture
+  for (const ev of ["touchend", "touchcancel"]) addEventListener(ev, e => { if (!e.touches.length) touchHeld = false; });
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
 
 // ---------- state ----------
 let state = "menu";        // menu | ready | playing | paused | results
@@ -251,6 +344,7 @@ const overlayVisible = () => state === "menu" || state === "results" || state ==
 function goMenu() { state = "menu"; listening = false; refresh(); showPanel("menu"); }
 function startRun() {
   requestLock();
+  if (MOBILE) { cx = W / 2; cy = H / 2; } // the gyro crosshair is hidden in menus, so start it somewhere known
   const R = SIZES[settings.size] * Math.min(W, H);
   run = { mode: settings.mode, dur: settings.dur, size: settings.size, R, t: 0, score: 0, hits: 0, shots: 0,
     expired: 0, streak: 0, bestStreak: 0, ttk: [], onT: 0, heldT: 0, targets: [], nextSpawn: 0,
@@ -466,7 +560,7 @@ function updateWeapon(dt) {
     run.reloadT -= dt;
     if (run.reloadT <= 0) { run.reloadT = 0; run.ammo = w.mag; tone(800, 0.05, "square", 0.04); }
   }
-  const held = (fireHeld || (settings.mouseFire && mouseHeld)) && run.reloadT <= 0;
+  const held = triggerHeld() && run.reloadT <= 0;
   run.cd -= dt;
   if (held) {
     while (run.cd <= 0 && run.ammo > 0) { shoot(); run.cd += 60 / w.rpm; }
@@ -492,7 +586,7 @@ function drawEnemy(e) {
 // ---------- UI via crosshair ----------
 let hovered = null;
 function elAtCursor() {
-  const el = document.elementFromPoint(cx, cy);
+  const p = toScreen(cx, cy), el = document.elementFromPoint(p.x, p.y);
   return el && el.closest("button");
 }
 function uiClick() { const b = elAtCursor(); if (b && !b.disabled) { tone(700, 0.04, "sine", 0.06); b.click(); } }
@@ -502,6 +596,7 @@ let mouseHeld = false;
 // pointerrawupdate isn't held back until the next animation frame like mousemove is
 const MOVE_EVENT = "onpointerrawupdate" in window ? "pointerrawupdate" : "mousemove";
 addEventListener(MOVE_EVENT, e => {
+  if (e.pointerType === "touch") return;
   if (locked) {
     cx = clamp(cx + e.movementX * settings.sens, 0, W); cy = clamp(cy + e.movementY * settings.sens, 0, H);
     drawCross(); // draw now instead of waiting for the next frame
@@ -511,7 +606,7 @@ addEventListener("mousedown", e => {
   ac();
   if (e.button !== 0) return;
   if (overlayVisible()) { if (locked) { e.preventDefault(); uiClick(); } return; } // unlocked: native click handles it
-  if (settings.lock && !locked) { requestLock(); return; }
+  if (wantLock() && !locked) { requestLock(); return; }
   if (settings.mouseFire) { mouseHeld = true; fire("mouse"); }
 });
 addEventListener("mouseup", e => { if (e.button === 0) mouseHeld = false; });
@@ -523,6 +618,7 @@ addEventListener("keydown", e => {
 
 // ---------- gamepad ----------
 let padPrev = [], fireHeld = false, ignoreFire = false, listening = false;
+const triggerHeld = () => fireHeld || touchHeld || (settings.mouseFire && mouseHeld);
 function pollPads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   let held = false;
@@ -589,7 +685,7 @@ function update(dt) {
   if (isTracking(run.mode)) {
     const t = run.targets[0];
     const on = Math.hypot(cx - t.x, cy - t.y) <= t.r;
-    const held = fireHeld || (settings.mouseFire && mouseHeld);
+    const held = triggerHeld();
     t.on = on && held;
     if (held) { run.heldT += dt; if (on) run.onT += dt; }
     if (t.on && (run.tick -= dt) <= 0) { run.tick = 0.09; sndTick(); rumble(0.25, 0, 30); }
@@ -626,7 +722,8 @@ function render(dt) {
       g.fillText(MODES[run.mode].name + " · " + run.dur + "s", W / 2, H / 2 - run.R * 1.4 - 50);
       g.font = "15px system-ui, sans-serif"; g.fillStyle = "#8b98a5";
       g.fillText("Shoot the target to start", W / 2, H / 2 - run.R * 1.4 - 22);
-      if (settings.lock && !locked) g.fillText("Click to lock the pointer", W / 2, H / 2 + run.R * 1.4 + 34);
+      if (wantLock() && !locked) g.fillText("Click to lock the pointer", W / 2, H / 2 + run.R * 1.4 + 34);
+      if (MOBILE) g.fillText("Tap anywhere to shoot · tap the top bar to pause", W / 2, H / 2 + run.R * 1.4 + 34);
     } else {
       for (const t of run.targets) t.enemy ? drawEnemy(t) : drawTarget(t);
     }
@@ -669,13 +766,14 @@ function crossAt(x, y, c) {
 // In weapon modes the main crosshair sits where bullets land (cursor + recoil) and the cursor
 // itself becomes a faint ring. Otherwise the unlocked OS cursor (CSS) is the crosshair.
 const recoilView = () => run && state === "playing" && isWeapon(run.mode);
+const ownCursor = () => locked || (MOBILE && !overlayVisible());
 function drawCross() {
   f.clearRect(0, 0, W, H);
   const c = settings.color, x = Math.round(cx) + .5, y = Math.round(cy) + .5;
   if (recoilView()) {
-    if (locked) { f.strokeStyle = "rgba(255,255,255,.4)"; f.lineWidth = 1.5; f.beginPath(); f.arc(x, y, 5, 0, TAU); f.stroke(); }
+    if (ownCursor()) { f.strokeStyle = "rgba(255,255,255,.4)"; f.lineWidth = 1.5; f.beginPath(); f.arc(x, y, 5, 0, TAU); f.stroke(); }
     crossAt(Math.round(cx + run.rx) + .5, Math.round(cy + run.ry) + .5, c);
-  } else if (locked) crossAt(x, y, c);
+  } else if (ownCursor()) crossAt(x, y, c);
   if (hitFlash > 0) {
     f.globalAlpha = hitFlash; f.strokeStyle = "#fff"; f.lineWidth = 2; f.beginPath();
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { f.moveTo(x + sx * 7, y + sy * 7); f.lineTo(x + sx * 14, y + sy * 14); }
@@ -701,6 +799,7 @@ function drawHud() {
   g.fillStyle = "rgba(22,27,34,.85)"; g.fillRect(0, 0, W, HUD_H - 14);
   g.textBaseline = "middle"; g.textAlign = "center"; g.fillStyle = left < 5 ? "#ff5468" : "#e6edf3";
   g.font = "700 30px system-ui, sans-serif"; g.fillText(left.toFixed(1), W / 2, 28);
+  if (MOBILE) { g.fillStyle = "#8b98a5"; g.fillRect(W / 2 + 52, 19, 5, 18); g.fillRect(W / 2 + 62, 19, 5, 18); }
   g.font = "600 18px system-ui, sans-serif"; g.fillStyle = "#e6edf3";
   if (isWeapon(run.mode)) {
     const w = WEAPONS[run.weapon];
@@ -790,6 +889,9 @@ for (const box of document.querySelectorAll(".seg[data-key]")) {
 for (const b of document.querySelectorAll("[data-sens]")) b.addEventListener("click", () => {
   settings.sens = Math.round(clamp(settings.sens + +b.dataset.sens, 0.05, 5) * 100) / 100; save(); refresh();
 });
+for (const b of document.querySelectorAll("[data-gsens]")) b.addEventListener("click", () => {
+  settings.gyroSens = clamp(settings.gyroSens + +b.dataset.gsens, 0.25, 10); save(); refresh();
+});
 $("#rebind").addEventListener("click", () => { listening = true; refresh(); });
 $("#resetBind").addEventListener("click", () => { listening = false; settings.fire = DEFAULTS.fire.slice(); save(); refresh(); });
 $("#startBtn").addEventListener("click", () => { ac(); startRun(); });
@@ -805,12 +907,24 @@ function refresh() {
   $("#modeDesc").textContent = MODES[settings.mode].desc;
   for (const row of document.querySelectorAll(".wrow")) row.style.display = isWeapon(settings.mode) ? "" : "none";
   $("#sensVal").textContent = settings.sens.toFixed(2);
+  $("#gsensVal").textContent = settings.gyroSens.toFixed(2);
   $("#fireVal").textContent = listening ? "Press a button…" : settings.fire.map(btnName).join(", ");
   const b = getBest(bestKey());
   $("#menuBest").textContent = b != null ? `Best for this setup: ${b}` : "";
 }
+const GYRO_STATUS = {
+  off: "Tap anywhere to enable the gyro.",
+  on: "Gyro active.",
+  denied: "Motion access was denied. Reload the page and allow it to aim with the gyro.",
+  none: "No gyroscope found on this device.",
+};
 function updatePadStatus(pads) {
   const dot = $("#padDot"), txt = $("#padText");
+  if (MOBILE && !pads.length) {
+    dot.className = "dot" + (gyroState === "on" ? " ok" : "");
+    txt.textContent = GYRO_STATUS[gyroState];
+    return;
+  }
   dot.className = "dot" + (fireHeld ? " fire" : pads.length ? " ok" : "");
   txt.textContent = pads.length
     ? pads.map(p => p.id.replace(/\s*\(.*?Vendor.*?\)/i, "")).join(" | ") + (fireHeld ? "  — FIRE" : "")
