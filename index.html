@@ -127,7 +127,7 @@
       <span class="best" id="menuBest"></span>
     </div>
     <p class="hint desk">Gamepad fire clicks whatever is under the crosshair, so the whole menu works from the controller.
-      “Left stick” moves the crosshair at a speed set by how far the stick is pushed; the mouse still works alongside it.
+      “Right stick” moves the crosshair at a speed set by how far the stick is pushed; the mouse still works alongside it.
       <kbd>Start</kbd> = start / pause, <kbd>X</kbd> = reload, <kbd>Back</kbd> = menu, <kbd>Esc</kbd> = pause.
       “System” uses the real OS cursor (lowest latency, but stops at the screen edge). “Pointer lock” draws its own crosshair from raw relative motion so it never hits the edge, at the cost of a little display latency. If Steam Input maps your trigger to a mouse click, keep “Mouse click fires” on.</p>
     <p class="hint mob">Tap the right half of the screen to fire; hold your finger down in tracking and weapon modes.
@@ -205,7 +205,7 @@ const SEGS = {
   dur: [[15, "15s"], [30, "30s"], [60, "60s"], [90, "90s"]],
   size: [["S", "Small"], ["M", "Medium"], ["L", "Large"]],
   lock: [[false, "System (lowest latency)"], [true, "Pointer lock"]],
-  aim: [["mouse", "Mouse"], ["stick", "Left stick"]],
+  aim: [["mouse", "Mouse"], ["stick", "Right stick"]],
   stickCurve: [[1, "Linear"], [2, "Quadratic"], [3, "Cubic"]],
   mouseFire: [[true, "On"], [false, "Off"]],
   rumble: [[true, "On"], [false, "Off"]],
@@ -660,9 +660,9 @@ addEventListener("keydown", e => {
 let padPrev = [], fireHeld = false, ignoreFire = false, listening = false;
 const triggerHeld = () => fireHeld || touchHeld || (settings.mouseFire && mouseHeld);
 const stickAim = () => settings.aim === "stick" && !MOBILE;
-// left stick sets crosshair velocity; the controller applies its own deadzone
+// right stick sets crosshair velocity; the controller applies its own deadzone
 function stickMove(p, dt) {
-  const x = p.axes[0] || 0, y = p.axes[1] || 0, mag = Math.min(1, Math.hypot(x, y));
+  const x = p.axes[2] || 0, y = p.axes[3] || 0, mag = Math.min(1, Math.hypot(x, y));
   if (!mag) return;
   const v = Math.pow(mag, settings.stickCurve) * settings.stickSens * W * dt / Math.hypot(x, y);
   cx = clamp(cx + x * v, 0, W); cy = clamp(cy + y * v, 0, H);
